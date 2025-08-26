@@ -1,41 +1,29 @@
-'use client';
-import { useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabaseClient';
-import { useRouter } from 'next/navigation';
+'use client'
+import { useSearchParams } from 'next/navigation'
+import { useState } from 'react'
+import { signInAction } from './actions'
 
 export default function LoginPage() {
-  const router = useRouter();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      if (data.session) router.push('/dashboard');
-    });
-  }, [router]);
-
-  async function onLogin(e: React.FormEvent) {
-    e.preventDefault();
-    setLoading(true);
-    setError('');
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    setLoading(false);
-    if (error) setError(error.message);
-    else router.push('/dashboard');
-  }
+  const params = useSearchParams()
+  const redirectTo = params.get('redirect') || '/dashboard'
+  const [error, setError] = useState<string | null>(null)
 
   return (
-    <div className="min-h-[70vh] grid place-items-center">
-      <form onSubmit={onLogin} className="card w-full max-w-md space-y-4">
-        <h1 className="text-2xl font-semibold">Connexion</h1>
-        <input className="input w-full" type="email" placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)} required />
-        <input className="input w-full" type="password" placeholder="Mot de passe" value={password} onChange={e=>setPassword(e.target.value)} required />
-        {error && <div className="text-red-600 text-sm">{error}</div>}
-        <button disabled={loading} className="bg-brand text-white rounded-xl px-4 py-2 w-full">{loading ? 'Connexion...' : 'Se connecter'}</button>
-        <style jsx>{`.input{ @apply bg-white rounded-xl border px-3 py-2; }`}</style>
+    <div className="min-h-[70vh] grid place-items-center p-4">
+      <form
+        action={async (formData) => {
+          const res = await signInAction(formData)
+          if (res?.error) setError(res.error)
+          // sinon redirect effectué côté serveur
+        }}
+        className="w-full max-w-sm space-y-4"
+      >
+        <input type="hidden" name="redirect" value={redirectTo} />
+        <input name="email" type="email" required placeholder="Email" className="border rounded w-full p-2" />
+        <input name="password" type="password" required placeholder="Mot de passe" className="border rounded w-full p-2" />
+        <button type="submit" className="w-full border rounded p-2">Se connecter</button>
+        {error && <p className="text-red-600 text-sm">{error}</p>}
       </form>
     </div>
-  );
+  )
 }
