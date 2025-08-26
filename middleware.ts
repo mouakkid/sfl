@@ -1,4 +1,3 @@
-// middleware.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 
@@ -6,7 +5,7 @@ export async function middleware(req: NextRequest) {
   const res = NextResponse.next()
   const { pathname } = req.nextUrl
 
-  // 1) Pages publiques : laisses passer
+  // Pages publiques (jamais redirigées)
   const isPublic =
     pathname === '/' ||
     pathname.startsWith('/login') ||
@@ -20,7 +19,7 @@ export async function middleware(req: NextRequest) {
 
   if (isPublic) return res
 
-  // 2) Lire la session Supabase correctement (cookies SSR)
+  // Lire/écrire cookies auth côté edge
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -39,23 +38,22 @@ export async function middleware(req: NextRequest) {
 
   const { data: { session } } = await supabase.auth.getSession()
 
-  // 3) Pas de session → /login?redirect=<page demandée>
+  // Pas de session → /login?redirect=<page demandée>
   if (!session) {
     const url = new URL('/login', req.url)
     url.searchParams.set('redirect', pathname)
     return NextResponse.redirect(url)
   }
 
-  // 4) OK
   return res
 }
 
-// 5) Ne protège que les zones privées (évite les faux positifs)
+// ⚠️ IMPORTANT: n'applique le middleware que sur les zones privées
 export const config = {
   matcher: [
     '/dashboard/:path*',
     '/orders/:path*',
     '/settings/:path*',
-    // ajoute ici toutes tes pages privées
+    // ajoute ici TOUTES tes pages privées, uniquement
   ],
 }
