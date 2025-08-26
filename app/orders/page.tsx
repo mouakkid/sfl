@@ -11,6 +11,7 @@ type Search = {
   to?: string
   min?: string
   max?: string
+  error?: string
 }
 
 type Order = {
@@ -31,7 +32,8 @@ const fmtMAD = (n: number) =>
   new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'MAD' }).format(n || 0)
 
 export default async function OrdersPage({ searchParams }: { searchParams: Search }) {
-  const { q = '', status = 'ALL', from = '', to = '', min = '', max = '' } = searchParams || {}
+  const { q = '', status = 'ALL', from = '', to = '', min = '', max = '', error: errMsg = '' } =
+    searchParams || {}
 
   const jar = cookies()
   const supabase = createServerClient(
@@ -67,6 +69,13 @@ export default async function OrdersPage({ searchParams }: { searchParams: Searc
           <PlusIcon /> Ajouter
         </Link>
       </div>
+
+      {/* Bannière d’erreur renvoyée par actions (RLS, etc.) */}
+      {errMsg && (
+        <div className="rounded border border-red-300 bg-red-50 text-red-700 p-3 text-sm">
+          {decodeURIComponent(errMsg)}
+        </div>
+      )}
 
       {/* Filtres */}
       <div className="rounded-2xl border p-4">
@@ -159,12 +168,17 @@ export default async function OrdersPage({ searchParams }: { searchParams: Searc
                       <Link href={`/orders/${o.id}/edit?back=/orders`} className="inline-flex items-center gap-1 px-2 py-1 border rounded">
                         <EditIcon /> Modifier
                       </Link>
-                      <form action={deleteOrderAction}>
-                        <input type="hidden" name="id" value={o.id} />
-                        <button className="inline-flex items-center gap-1 px-2 py-1 border rounded text-red-600" type="submit">
-                          <TrashIcon /> Supprimer
-                        </button>
-                      </form>
+
+                      {/* ✅ Bouton avec formAction (pas de <form>) */}
+                      <button
+                        formAction={deleteOrderAction}
+                        name="id"
+                        value={o.id}
+                        className="inline-flex items-center gap-1 px-2 py-1 border rounded text-red-600"
+                        type="submit"
+                      >
+                        <TrashIcon /> Supprimer
+                      </button>
                     </div>
                   </Td>
                 </tr>
