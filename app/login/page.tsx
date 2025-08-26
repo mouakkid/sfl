@@ -1,6 +1,10 @@
+// app/login/page.tsx
+import { cookies } from 'next/headers'
+import { createServerClient, type CookieOptions } from '@supabase/ssr'
+import { redirect } from 'next/navigation'
 import { login } from './actions'
 
-export default function LoginPage({
+export default async function LoginPage({
   searchParams,
 }: {
   searchParams?: { redirect?: string; error?: string }
@@ -11,6 +15,30 @@ export default function LoginPage({
       : '/dashboard'
   const errorMsg = typeof searchParams?.error === 'string' ? searchParams.error : ''
 
+  // --- Si déjà authentifié, redirige tout de suite
+  const jar = cookies()
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return jar.getAll()
+        },
+        setAll(list) {
+          try {
+            list.forEach(({ name, value, options }) =>
+              jar.set(name, value, options as CookieOptions)
+            )
+          } catch {}
+        },
+      },
+    }
+  )
+  const { data: { user } } = await supabase.auth.getUser()
+  if (user) redirect(redirectTo)
+
+  // --- Formulaire
   return (
     <div className="min-h-[60vh] flex items-center justify-center p-6">
       <div className="w-full max-w-md border rounded-2xl p-6 space-y-4">
@@ -55,7 +83,7 @@ export default function LoginPage({
         </form>
 
         <p className="text-xs text-gray-500">
-          Besoin d’un compte ? Créez-le depuis Supabase Users ou ajoutez une page /signup plus tard.
+          Pas de compte ? Créez-le dans Supabase (Users) ou ajoutez /signup plus tard.
         </p>
       </div>
     </div>
