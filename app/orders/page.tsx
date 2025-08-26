@@ -38,13 +38,27 @@ export default async function OrdersPage() {
     }
   )
 
+  const cols = [
+    'id',
+    'created_at',
+    'customer_name',
+    'phone',
+    'instagram',
+    'address',
+    'purchase_price',
+    'sale_price',
+    'amount',
+    'advance_amount',
+    'status',
+  ].join(',')
+
   const { data, error } = await supabase
     .from('orders')
-    .select('id, created_at, customer_name, phone, instagram, address, purchase_price, sale_price, amount, advance_amount, status')
+    .select(cols)
     .order('created_at', { ascending: false })
     .limit(500)
 
-  const rows: Order[] = Array.isArray(data) ? (data as Order[]) : []
+  const rows: Order[] = (data ?? []) as Order[]
 
   return (
     <div className="p-6 space-y-4">
@@ -64,3 +78,40 @@ export default async function OrdersPage() {
       {!error && rows.length === 0 && (
         <p className="text-sm text-muted-foreground">Aucune commande pour l’instant.</p>
       )}
+
+      {!error && rows.length > 0 && (
+        <div className="overflow-x-auto rounded-2xl border">
+          <table className="w-full text-sm">
+            <thead className="border-b bg-muted/40">
+              <tr>
+                <th className="text-left py-2 px-3">Date</th>
+                <th className="text-left py-2 px-3">Client</th>
+                <th className="text-left py-2 px-3">Téléphone</th>
+                <th className="text-left py-2 px-3">Instagram</th>
+                <th className="text-left py-2 px-3">Montant</th>
+                <th className="text-left py-2 px-3">Statut</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((o) => {
+                const amount = (o.sale_price ?? o.amount ?? 0) as number
+                return (
+                  <tr key={o.id} className="border-b hover:bg-muted/30">
+                    <td className="py-2 px-3">
+                      {o.created_at ? new Date(o.created_at).toLocaleString('fr-FR') : '-'}
+                    </td>
+                    <td className="py-2 px-3">{o.customer_name ?? '-'}</td>
+                    <td className="py-2 px-3">{o.phone ?? '-'}</td>
+                    <td className="py-2 px-3">{o.instagram ?? '-'}</td>
+                    <td className="py-2 px-3">{fmtMAD(Number(amount) || 0)}</td>
+                    <td className="py-2 px-3">{o.status ?? '-'}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
