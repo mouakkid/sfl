@@ -1,65 +1,63 @@
 import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
+import { createServerClient } from '@supabase/ssr'
 
-// Chemins publics (accès sans login)
-const PUBLIC_STARTS_WITH = [
-  '/auth/confirm', // liens email
-  '/_next',        // assets Next
-  '/favicon',      // favicons
-]
-const PUBLIC_EXACT = new Set<string>([
-  '/',
-  '/login',
-  '/signup',
-  '/orders/export', // export déclenché depuis UI; RLS DB protège les données
-])
+export async function middleware(request: NextRequest) {
+  const { pathname, search } = request.nextUrl
 
-export function middleware(request: NextRequest) {
-  // ✅ Laisse passer toutes les requêtes non-GET (POST des formulaires/route handlers)
-  if (request.method !== 'GET') {
-    return NextResponse.next()
+  // Laisse passer les routes publiques
+  const isPublic =
+    pathname === '/login' ||
+    pathname.startsWith('/_next/') ||
+    pathname.startsWith('/api/') ||
+    pathname === '/favicon.ico' ||
+    pathname.endsWith('.svg') ||
+    pathname.endsWith('.png') ||
+    pathname.endsWith('.jpg') ||
+    pathname.endsWith('.jpeg') ||
+    pathname.endsWith('.webp')
+
+  // on crée une réponse mutable
+  const res = NextResponse.next()
+
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        // IMPORTANT: avec @supabase/ssr on doit utiliser getAll / setAll
+        getAll() {
+          return request.cookies.getAll()
+        },
+        setAll(cookies) {
+          cookies.forEach((cookie) => res.cookies.set(cookie.name, cookie.value, cookie.options))
+        },
+      },
+    }
+  )
+
+  const { data: { session } } = await supabase.auth.getSession()
+
+  // Si déjà connecté et on est sur /login -> redirige vers dashboard (ou vers redirect=?)
+  if (session && pathname === '/login') {
+    const params = new URLSearchParams(search)
+    const to = params.get('redirect') || '/dashboard'
+    return NextResponse.redirect(new URL(to, request.url))
   }
 
-  const { pathname } = request.nextUrl
-
-  // ✅ Laisse passer les assets et les routes publiques
-  if (
-    PUBLIC_EXACT.has(pathname) ||
-    PUBLIC_STARTS_WITH.some((p) => pathname.startsWith(p))
-  ) {
-    return NextResponse.next()
-  }
-
-  if (pathname === '/login') {
-  const hasAccess =
-    !!request.cookies.get('sb-access-token') ||
-    !!request.cookies.get('sb-refresh-token')
-  if (hasAccess) {
-    const url = request.nextUrl.clone()
-    url.pathname = request.nextUrl.searchParams.get('redirect') || '/dashboard'
-    return NextResponse.redirect(url)
-  }
-}
-
-  // ✅ Check cookies Supabase (présence ≈ session active côté client/SSR)
-  // Supabase v2 pose `sb-access-token` et `sb-refresh-token`
-  const hasAccess =
-    !!request.cookies.get('sb-access-token') ||
-    !!request.cookies.get('sb:token') ||           // anciens noms potentiels
-    !!request.cookies.get('supabase-auth-token')   // fallback très ancien
-
-  if (!hasAccess) {
-    const url = request.nextUrl.clone()
-    url.pathname = '/login'
+  // Si non connecté et route protégée -> envoie vers /login
+  if (!session && !isPublic) {
+    const url = new URL('/login', request.url)
     url.searchParams.set('redirect', pathname)
     return NextResponse.redirect(url)
   }
 
-  // ✅ Auth OK → continue
-  return NextResponse.next()
+  return res
 }
 
-// Match tout sauf les assets statiques gérés par Next
+// Matcher: on laisse passer les assets et images
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
+  matcher: [
+    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+  ],
 }
