@@ -1,42 +1,41 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
+import type { NextRequest } from 'next/server'
+import { NextResponse } from 'next/server'
+import { createMiddlewareClient } from '@supabase/ssr'
 
-export async function middleware(req: NextRequest) {
+export async function middleware(request: NextRequest) {
   const res = NextResponse.next()
 
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        // API moderne: getAll/setAll
-        getAll() {
-          return req.cookies.getAll()
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach((cookie) => res.cookies.set(cookie))
-        },
-      },
-    }
-  )
+  // ✅ Laisse passer les POST (server actions / routes)
+  if (request.method !== 'GET') return res
 
-  // getUser() côté edge = revalidation fiable
-  const { data, error } = await supabase.auth.getUser()
+  const { pathname } = request.nextUrl
 
-  if (error || !data?.user) {
-    const url = new URL('/login', req.url)
-    url.searchParams.set('redirect', req.nextUrl.pathname)
+  // Routes publiques + assets
+  const isPublic =
+    pathname === '/' ||
+    pathname === '/login' ||
+    pathname === '/signup' ||
+    pathname.startsWith('/auth/confirm') ||
+    pathname.startsWith('/_next') ||
+    pathname.startsWith('/favicon') ||
+    pathname.startsWith('/orders/export') // export CSV accessible une fois loggé (RLS côté DB)
+
+  if (isPublic) return res
+
+  // Check session Supabase pour protéger le reste
+  const supabase = createMiddlewareClient({ req: request, res })
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user) {
+    const url = request.nextUrl.clone()
+    url.pathname = '/login'
+    url.searchParams.set('redirect', pathname)
     return NextResponse.redirect(url)
   }
 
   return res
 }
 
-// Protège UNIQUEMENT les pages privées (pas /, pas /login, pas /api)
 export const config = {
-  matcher: [
-    '/dashboard/:path*',
-    '/orders/:path*',
-    '/settings/:path*',
-  ],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
 }
