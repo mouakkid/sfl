@@ -1,10 +1,19 @@
-import Image from 'next/image';
+// components/Logo.tsx
+import Image from 'next/image'
+import Link from 'next/link'
 
 export default function Logo() {
   return (
-    <div className="flex items-center gap-3">
-      <Image src="/logo.jpg" alt="Shop From London" width={40} height={40} className="rounded-full" />
-      <div className="font-bold text-lg"><span className="text-brand">SHOP</span> FROM <span className="text-brand-red">LONDON</span></div>
-    </div>
-  );
+    <Link href="/" className="flex items-center gap-2">
+      {/* Chemin absolu car le fichier est dans /public */}
+      <Image
+        src="/logo.png"
+        alt="Shop From London"
+        width={160}
+        height={36}
+        priority
+      />
+      <span className="sr-only">Shop From London</span>
+    </Link>
+  )
 }
