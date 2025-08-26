@@ -1,51 +1,103 @@
-'use client';
-import { useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabaseClient';
-import KPI from '@/components/KPI';
-import { currency } from '@/lib/utils';
-import dynamic from 'next/dynamic';
-const { Line } = require('react-chartjs-2');
-import { Chart, CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend } from 'chart.js';
-Chart.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend);
+import dynamic from 'next/dynamic'
+import { cookies } from 'next/headers'
+import { createServerClient } from '@supabase/ssr'
+import dayjs from 'dayjs'
 
-export default function Dashboard() {
-  const [stats, setStats] = useState({ count: 0, ca: 0, cost: 0, marge: 0 });
-  const [series, setSeries] = useState<{labels: string[], values: number[]}>({labels: [], values: []});
+// Types souples (pas bloquants même si la table change un peu)
+type Order = {
+  id: string
+  created_at: string
+  purchase_price?: number | null
+  sale_price?: number | null
+  amount?: number | null // fallback si tu as un autre champ montant
+}
 
-  async function compute() {
-    const { data } = await supabase.from('orders').select('*');
-    const count = data?.length || 0;
-    const ca = data?.reduce((s,o)=>s+(o.selling_price||0),0) || 0;
-    const cost = data?.reduce((s,o)=>s+(o.purchase_price||0),0) || 0;
-    const marge = ca - cost;
-    setStats({ count, ca, cost, marge });
+// Petite utilitaire
+const fmtMAD = (n: number) =>
+  new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'MAD' }).format(n)
 
-    // monthly series
-    const map = new Map<string, number>();
-    (data||[]).forEach(o=>{
-      const d = new Date(o.created_at);
-      const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
-      map.set(key, (map.get(key)||0) + (o.selling_price||0));
-    });
-    const labels = Array.from(map.keys()).sort();
-    const values = labels.map(l=>map.get(l)||0);
-    setSeries({ labels, values });
+export default async function DashboardPage() {
+  // ✅ Supabase côté serveur + cookies (API getAll/setAll)
+  const cookieStore = cookies()
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return cookieStore.getAll()
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach((c) => cookieStore.set(c))
+        },
+      },
+    }
+  )
+
+  // 🔎 Récup données (adapté si ta table s'appelle différemment)
+  const { data, error } = await supabase
+    .from('orders')
+    .select('id, created_at, purchase_price, sale_price, amount')
+    .order('created_at', { ascending: true })
+    .limit(1000)
+
+  const orders: Order[] = Array.isArray(data) ? (data as Order[]) : []
+
+  // 📊 KPIs
+  const totalOrders = orders.length
+  const revenue = orders.reduce(
+    (s, o) => s + (o.sale_price ?? o.amount ?? 0),
+    0
+  )
+  const cost = orders.reduce((s, o) => s + (o.purchase_price ?? 0), 0)
+  const margin = revenue - cost
+
+  // 📈 Série CA 6 derniers mois
+  const labels: string[] = []
+  const serie: number[] = []
+  for (let i = 5; i >= 0; i--) {
+    const m = dayjs().subtract(i, 'month')
+    labels.push(m.format('MMM YY'))
+    const msum = orders
+      .filter((o) => o.created_at && dayjs(o.created_at).isSame(m, 'month'))
+      .reduce((s, o) => s + (o.sale_price ?? o.amount ?? 0), 0)
+    serie.push(msum)
   }
 
-  useEffect(()=>{ compute(); }, []);
+  // ⚠️ Graph client-only (évite les crash SSR)
+  const RevenueChart = dynamic(
+    () => import('@/components/charts/RevenueChart'),
+    { ssr: false }
+  )
+
+  const chartData = {
+    labels,
+    datasets: [
+      {
+        label: 'CA (6 derniers mois)',
+        data: serie,
+      },
+    ],
+  }
 
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <KPI title="Commandes" value={String(stats.count)} />
-        <KPI title="Chiffre d'affaires" value={currency(stats.ca)} />
-        <KPI title="Coût achats" value={currency(stats.cost)} />
-        <KPI title="Marge nette" value={currency(stats.marge)} />
+    <div className="p-6 space-y-6">
+      <h1 className="text-2xl font-semibold">Dashboard</h1>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <Card title="Commandes" value={totalOrders.toLocaleString('fr-FR')} />
+        <Card title="Chiffre d’affaires" value={fmtMAD(revenue)} />
+        <Card title="Marge nette" value={fmtMAD(margin)} />
       </div>
-      <div className="card">
-        <div className="font-semibold mb-2">CA par mois</div>
-        <Line data={{ labels: series.labels, datasets: [{ label: 'CA', data: series.values }] }} options={{ responsive: true, maintainAspectRatio: false }} height={280} />
+
+      <div className="rounded-2xl border p-4">
+        {orders.length ? (
+          <RevenueChart data={chartData} />
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            Pas encore de données… ajoute des commandes pour voir le graph.
+          </p>
+        )}
       </div>
-    </div>
-  );
-}
+
+      {error && (
