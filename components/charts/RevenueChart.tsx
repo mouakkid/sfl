@@ -11,7 +11,6 @@ import {
   Legend,
 } from 'chart.js'
 
-// Enregistre les éléments requis une seule fois côté client
 Chart.register(LineElement, PointElement, LinearScale, CategoryScale, Tooltip, Legend)
 
 export default function RevenueChart({ data }: { data: any }) {
