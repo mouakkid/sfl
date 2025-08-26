@@ -17,27 +17,40 @@ export async function createOrderAction(formData: FormData) {
     }
   )
 
-  // user pour RLS (on écrit user_id)
+  // Récup user (utile si RLS par utilisateur)
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { error: 'Non authentifié' }
-
-  const payload = {
-    customer_name: String(formData.get('customer_name') || '').trim(),
-    phone: String(formData.get('phone') || '').trim() || null,
-    instagram: String(formData.get('instagram') || '').trim() || null,
-    address: String(formData.get('address') || '').trim() || null,
-    purchase_price: parseFloat(String(formData.get('purchase_price') || '')) || null,
-    sale_price: parseFloat(String(formData.get('sale_price') || '')) || null,
-    amount: parseFloat(String(formData.get('amount') || '')) || null,
-    advance_amount: parseFloat(String(formData.get('advance_amount') || '')) || null,
-    status: String(formData.get('status') || 'NEW'),
-    user_id: user.id, // important si RLS = propriétaire
+  if (!user) {
+    redirect('/login?redirect=/orders/new')
   }
 
-  if (!payload.customer_name) return { error: 'Le nom client est requis' }
+  const v = (k: string) => String(formData.get(k) ?? '').trim()
+  const n = (k: string) => {
+    const raw = String(formData.get(k) ?? '').trim()
+    return raw === '' ? null : Number.parseFloat(raw)
+  }
+
+  const payload = {
+    customer_name: v('customer_name'),
+    phone: v('phone') || null,
+    instagram: v('instagram') || null,
+    address: v('address') || null,
+    purchase_price: n('purchase_price'),
+    sale_price: n('sale_price'),
+    amount: n('amount'),
+    advance_amount: n('advance_amount'),
+    status: v('status') || 'NEW',
+    user_id: user!.id, // si RLS propriétaire
+  }
+
+  if (!payload.customer_name) {
+    redirect('/orders/new?error=' + encodeURIComponent('Le nom client est requis'))
+  }
 
   const { error } = await supabase.from('orders').insert([payload])
-  if (error) return { error: error.message }
+
+  if (error) {
+    redirect('/orders/new?error=' + encodeURIComponent(error.message))
+  }
 
   redirect('/orders')
 }
