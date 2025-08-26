@@ -206,4 +206,11 @@ function FilterIcon(props: SVGProps<SVGSVGElement>) {
   return (<svg {...props} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M22 3H2l8 9v7l4 2v-9l8-9z"/></svg>)
 }
 function EditIcon(props: SVGProps<SVGSVGElement>) {
-  return (<svg {...props} width="16" height="16" viewBox
+  return (<svg {...props} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>)
+}
+function TrashIcon(props: SVGProps<SVGSVGElement>) {
+  return (<svg {...props} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4h8v2"/></svg>)
+}
+function BoxIcon(props: SVGProps<SVGSVGElement>) {
+  return (<svg {...props} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="m21 16-8 5-8-5V8l8-5 8 5z"/><path d="m3.3 7 8 5 8-5"/></svg>)
+}
