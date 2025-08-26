@@ -2,7 +2,8 @@ import { createOrderAction } from '../actions'
 
 export default function NewOrderPage({
   searchParams,
-}: { searchParams?: { back?: string } }) {
+}: { searchParams?: { error?: string; back?: string } }) {
+  const err = searchParams?.error
   const backTo = searchParams?.back || '/orders'
 
   return (
@@ -11,6 +12,12 @@ export default function NewOrderPage({
         <h1 className="text-2xl font-semibold">Nouvelle commande</h1>
         <a href={backTo} className="border rounded px-3 py-1">Retour</a>
       </div>
+
+      {err && (
+        <div className="rounded border border-red-300 bg-red-50 text-red-700 p-3 text-sm">
+          {decodeURIComponent(err)}
+        </div>
+      )}
 
       <form action={createOrderAction} className="space-y-4">
         <div>
@@ -56,7 +63,7 @@ export default function NewOrderPage({
           </div>
           <div>
             <label className="block text-sm mb-1">Statut</label>
-            <select name="status" className="w-full border rounded p-2">
+            <select name="status" className="w-full border rounded p-2" defaultValue="NEW">
               <option value="NEW">NEW</option>
               <option value="PAID">PAID</option>
               <option value="CANCELLED">CANCELLED</option>
