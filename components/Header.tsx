@@ -7,6 +7,10 @@ import { motion } from 'framer-motion'
 import { LayoutDashboard, ShoppingCart, LogOut } from 'lucide-react'
 import { useMemo } from 'react'
 
+// ✅ évite <motion.header> qui plante avec SWC
+const MotionHeader = motion.header
+const MotionDiv = motion.div
+
 function NavItem({
   href,
   label,
@@ -40,7 +44,7 @@ function NavItem({
 
 export default function Header() {
   return (
-    <motion.header
+    <MotionHeader
       initial={{ y: -12, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
       transition={{ type: 'spring', stiffness: 120, damping: 16 }}
@@ -49,32 +53,36 @@ export default function Header() {
       <div className="mx-auto flex max-w-6xl items-center justify-between p-3 md:p-4">
         {/* Logo + titre */}
         <Link href="/" className="flex items-center gap-3 group">
-          <motion.div
-            whileHover={{ scale: 1.04, rotate: 0 }}
-            whileTap={{ scale: 0.98 }}
-            className="shrink-0"
-          >
-            {/* IMPORTANT : fichier dans /public/logo.svg */}
+          <MotionDiv whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.98 }} className="shrink-0">
+            {/* IMPORTANT : le fichier doit exister dans /public */}
             <Image
-              src="public/logo.jpg"
+              src="/logo.jpg"            // si tu utilises PNG, change en /logo.png
               alt="Shop From London"
               width={160}
               height={36}
               priority
             />
-          </motion.div>
+          </MotionDiv>
           <span className="sr-only">Shop From London</span>
         </Link>
 
         {/* Navigation */}
         <nav className="flex items-center gap-2">
-          <NavItem
-            href="/dashboard"
-            label="Dashboard"
-            icon={<LayoutDashboard size={18} />}
-          />
-          <NavItem
-            href="/orders"
-            label="Commandes"
-            icon={<ShoppingCart size={18} />}
-          />
+          <NavItem href="/dashboard" label="Dashboard" icon={<LayoutDashboard size={18} />} />
+          <NavItem href="/orders" label="Commandes" icon={<ShoppingCart size={18} />} />
+        </nav>
+
+        {/* Action (garde ton flux actuel) */}
+        <div className="hidden md:block">
+          <Link
+            href="/login?redirect=/dashboard"
+            className="inline-flex items-center gap-2 rounded-2xl bg-rose-500 px-4 py-2 text-white transition hover:bg-rose-600"
+          >
+            <LogOut size={16} />
+            <span>Logout</span>
+          </Link>
+        </div>
+      </div>
+    </MotionHeader>
+  )
+}
