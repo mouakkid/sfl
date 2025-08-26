@@ -77,6 +77,15 @@ export default async function DashboardPage() {
     .neq('status', 'CANCELLED')
     .limit(10000)
 
+  if (error) {
+    return (
+      <div className="p-6">
+        <h1 className="text-2xl font-semibold mb-2">Dashboard</h1>
+        <p className="text-red-600">Erreur Supabase : {String(error.message)}</p>
+      </div>
+    )
+  }
+
   const rows: Order[] = (Array.isArray(data) ? data : []) as any[]
 
   // --- Agrégation par mois ---
@@ -96,7 +105,7 @@ export default async function DashboardPage() {
   }
   // calc net + rate
   for (const b of buckets) {
-    b.net = Math.max(0, b.revenue - b.cost) // si jamais coût > CA, garde la valeur réelle ? ici clamp 0
+    b.net = Math.max(0, b.revenue - b.cost) // si coût > CA, clamp à 0
     b.rate = b.revenue > 0 ? b.net / b.revenue : 0
   }
 
@@ -201,7 +210,6 @@ export default async function DashboardPage() {
           </div>
           {/* Couleur via currentColor (hérite du texte) */}
           <div className="text-blue-600">
-            {/** @ts-expect-error Server Component child */}
             <Bars data={buckets} />
           </div>
         </div>
@@ -212,7 +220,6 @@ export default async function DashboardPage() {
             <span className="text-xs text-gray-500">Ligne</span>
           </div>
           <div className="text-emerald-600">
-            {/** @ts-expect-error Server Component child */}
             <Line data={buckets} />
           </div>
         </div>
@@ -244,7 +251,6 @@ export default async function DashboardPage() {
         </table>
       </div>
 
-      {/* Note rapide */}
       <p className="text-xs text-gray-500">
         CA = <code>sale_price</code> (sinon <code>amount</code>). Marge nette = CA − <code>purchase_price</code>. Statut <code>CANCELLED</code> exclu.
       </p>
