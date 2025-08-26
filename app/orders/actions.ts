@@ -4,7 +4,7 @@ import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { createServerClient } from '@supabase/ssr'
 
-export async function createOrderAction(formData: FormData) {
+function supaFromCookies() {
   const jar = cookies()
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -16,16 +16,18 @@ export async function createOrderAction(formData: FormData) {
       },
     }
   )
+  return supabase
+}
 
-  // Récup user (utile si RLS par utilisateur)
+// CREATE
+export async function createOrderAction(formData: FormData) {
+  const supabase = supaFromCookies()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) {
-    redirect('/login?redirect=/orders/new')
-  }
+  if (!user) redirect('/login?redirect=/orders/new')
 
   const v = (k: string) => String(formData.get(k) ?? '').trim()
   const n = (k: string) => {
-    const raw = String(formData.get(k) ?? '').trim()
+    const raw = v(k)
     return raw === '' ? null : Number.parseFloat(raw)
   }
 
@@ -39,18 +41,11 @@ export async function createOrderAction(formData: FormData) {
     amount: n('amount'),
     advance_amount: n('advance_amount'),
     status: v('status') || 'NEW',
-    user_id: user!.id, // si RLS propriétaire
+    user_id: user.id,
   }
 
   if (!payload.customer_name) {
     redirect('/orders/new?error=' + encodeURIComponent('Le nom client est requis'))
   }
 
-  const { error } = await supabase.from('orders').insert([payload])
-
-  if (error) {
-    redirect('/orders/new?error=' + encodeURIComponent(error.message))
-  }
-
-  redirect('/orders')
-}
+  const { error } = await supabase.from('orders').insert([payload]
