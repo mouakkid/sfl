@@ -30,6 +30,17 @@ export function middleware(request: NextRequest) {
     return NextResponse.next()
   }
 
+  if (pathname === '/login') {
+  const hasAccess =
+    !!request.cookies.get('sb-access-token') ||
+    !!request.cookies.get('sb-refresh-token')
+  if (hasAccess) {
+    const url = request.nextUrl.clone()
+    url.pathname = request.nextUrl.searchParams.get('redirect') || '/dashboard'
+    return NextResponse.redirect(url)
+  }
+}
+
   // ✅ Check cookies Supabase (présence ≈ session active côté client/SSR)
   // Supabase v2 pose `sb-access-token` et `sb-refresh-token`
   const hasAccess =
