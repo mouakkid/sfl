@@ -1,4 +1,6 @@
 // app/dashboard/page.tsx
+export const dynamic = 'force-dynamic'
+
 import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
 
@@ -11,12 +13,12 @@ type Order = {
 }
 
 type Bucket = {
-  key: string      // ex: "2025-03"
-  label: string    // ex: "03/2025"
-  revenue: number  // CA
-  cost: number     // Coût (achat)
-  net: number      // Marge nette (CA - coût)
-  rate: number     // net / revenue (0..1)
+  key: string
+  label: string
+  revenue: number
+  cost: number
+  net: number
+  rate: number
 }
 
 const fmtMAD = (n: number) =>
@@ -39,9 +41,8 @@ function labelFR(d: Date) {
   const y = d.getFullYear()
   return `${m}/${y}`
 }
-
 function buildEmptyBuckets(n = 6, now = new Date()): Bucket[] {
-  const start = addMonths(firstDayOfMonth(now), - (n - 1))
+  const start = addMonths(firstDayOfMonth(now), -(n - 1))
   const out: Bucket[] = []
   for (let i = 0; i < n; i++) {
     const dt = addMonths(start, i)
@@ -50,52 +51,59 @@ function buildEmptyBuckets(n = 6, now = new Date()): Bucket[] {
   return out
 }
 
-function monthKeyFromISO(iso: string) {
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return null
-  return ymKey(d)
-}
-
 export default async function DashboardPage() {
-  // --- Supabase SSR ---
-  const jar = cookies()
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { cookies: { getAll: () => jar.getAll(), setAll: (l) => l.forEach((c) => jar.set(c)) } }
-  )
+  // 0) Vars env présentes ?
+  const hasEnv =
+    !!process.env.NEXT_PUBLIC_SUPABASE_URL &&
+    !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-  // --- Fenêtre: 6 derniers mois (1er jour à partir de M-5) ---
-  const now = new Date()
-  const from = addMonths(firstDayOfMonth(now), -5).toISOString()
-
-  // --- Récup des commandes (hors CANCELLED) ---
-  const { data, error } = await supabase
-    .from('orders')
-    .select('created_at, purchase_price, sale_price, amount, status')
-    .gte('created_at', from)
-    .neq('status', 'CANCELLED')
-    .limit(10000)
-
-  if (error) {
+  if (!hasEnv) {
     return (
-      <div className="p-6">
-        <h1 className="text-2xl font-semibold mb-2">Dashboard</h1>
-        <p className="text-red-600">Erreur Supabase : {String(error.message)}</p>
+      <div className="p-6 text-red-600">
+        Config manquante : <code>NEXT_PUBLIC_SUPABASE_URL</code> / <code>NEXT_PUBLIC_SUPABASE_ANON_KEY</code>
       </div>
     )
   }
 
-  const rows: Order[] = (Array.isArray(data) ? data : []) as any[]
+  // 1) Récup data Supabase (sécurisé + messages clairs)
+  let rows: Order[] = []
+  let errorMsg: string | null = null
 
-  // --- Agrégation par mois ---
+  try {
+    const jar = cookies()
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      { cookies: { getAll: () => jar.getAll(), setAll: (l) => l.forEach(c => jar.set(c)) } }
+    )
+
+    const now = new Date()
+    const from = addMonths(firstDayOfMonth(now), -5).toISOString()
+
+    const { data, error } = await supabase
+      .from('orders') // <— assure-toi que la table existe
+      .select('created_at, purchase_price, sale_price, amount, status')
+      .gte('created_at', from)
+      .neq('status', 'CANCELLED')
+      .limit(10000)
+
+    if (error) errorMsg = error.message
+    else rows = Array.isArray(data) ? (data as Order[]) : []
+  } catch (e: any) {
+    errorMsg = e?.message ?? 'Erreur inconnue'
+  }
+
+  // 2) Agrégation 6 derniers mois
+  const now = new Date()
   const buckets = buildEmptyBuckets(6, now)
   const map = new Map(buckets.map(b => [b.key, b]))
 
   for (const o of rows) {
-    if (!o?.created_at) continue
-    const key = monthKeyFromISO(o.created_at)
-    if (!key) continue
+    const iso = o?.created_at
+    if (!iso) continue
+    const d = new Date(iso)
+    if (Number.isNaN(d.getTime())) continue
+    const key = ymKey(d)
     const b = map.get(key)
     if (!b) continue
     const revenue = Number(o.sale_price ?? o.amount ?? 0) || 0
@@ -103,28 +111,25 @@ export default async function DashboardPage() {
     b.revenue += revenue
     b.cost += cost
   }
-  // calc net + rate
   for (const b of buckets) {
-    b.net = Math.max(0, b.revenue - b.cost) // si coût > CA, clamp à 0
+    b.net = Math.max(0, b.revenue - b.cost)
     b.rate = b.revenue > 0 ? b.net / b.revenue : 0
   }
 
-  // --- KPIs globaux (sur la fenêtre) ---
   const kpiRevenue = buckets.reduce((s, b) => s + b.revenue, 0)
   const kpiNet = buckets.reduce((s, b) => s + b.net, 0)
   const kpiRate = kpiRevenue > 0 ? kpiNet / kpiRevenue : 0
 
-  // --- Mini chart helpers (SVG SSR, zéro hydratation) ---
+  // 3) Mini-graphiques SSR (SVG, zéro hydratation)
   function Bars({ data, w = 520, h = 140, pad = 24 }: { data: Bucket[]; w?: number; h?: number; pad?: number }) {
     const innerW = w - pad * 2
     const innerH = h - pad * 2
     const max = Math.max(...data.map(d => d.revenue), 1)
-    const bw = innerW / data.length * 0.7
-    const gap = innerW / data.length * 0.3
+    const bw = (innerW / data.length) * 0.7
+    const gap = (innerW / data.length) * 0.3
     return (
       <svg width={w} height={h}>
         <g transform={`translate(${pad},${pad})`}>
-          {/* axe y (0 et max) */}
           <text x={0} y={innerH + 14} fontSize="10" fill="#6b7280">0</text>
           <text x={0} y={-6} fontSize="10" fill="#6b7280">{fmtMAD(max)}</text>
           {data.map((d, i) => {
@@ -151,23 +156,22 @@ export default async function DashboardPage() {
     const xStep = data.length > 1 ? innerW / (data.length - 1) : innerW
     const pts = data.map((d, i) => {
       const x = i * xStep
-      const y = innerH - (d.rate * innerH) // rate 0..1
+      const y = innerH - d.rate * innerH
       return `${x},${y}`
     }).join(' ')
     return (
       <svg width={w} height={h}>
         <g transform={`translate(${pad},${pad})`}>
-          {/* repères 0% / 50% / 100% */}
           <line x1={0} y1={innerH} x2={innerW} y2={innerH} stroke="#e5e7eb" />
-          <line x1={0} y1={innerH/2} x2={innerW} y2={innerH/2} stroke="#e5e7eb" />
+          <line x1={0} y1={innerH / 2} x2={innerW} y2={innerH / 2} stroke="#e5e7eb" />
           <text x={innerW + 4} y={innerH} fontSize="10" fill="#6b7280">0%</text>
-          <text x={innerW + 4} y={innerH/2} fontSize="10" fill="#6b7280">50%</text>
+          <text x={innerW + 4} y={innerH / 2} fontSize="10" fill="#6b7280">50%</text>
           <text x={innerW + 4} y={0} fontSize="10" fill="#6b7280">100%</text>
 
           <polyline fill="none" stroke="currentColor" strokeWidth="2" points={pts} />
           {data.map((d, i) => {
             const x = i * xStep
-            const y = innerH - (d.rate * innerH)
+            const y = innerH - d.rate * innerH
             return <circle key={d.key} cx={x} cy={y} r={3} fill="currentColor" />
           })}
           {data.map((d, i) => {
@@ -185,6 +189,13 @@ export default async function DashboardPage() {
 
   return (
     <div className="p-6 space-y-6">
+      {/* Message d’erreur clair au lieu d’un écran blanc */}
+      {errorMsg && (
+        <div className="rounded border border-red-300 bg-red-50 text-red-700 p-3 text-sm">
+          Erreur Supabase : {errorMsg}
+        </div>
+      )}
+
       {/* KPIs */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="rounded-2xl border p-4">
@@ -208,7 +219,6 @@ export default async function DashboardPage() {
             <h2 className="font-medium">CA — 6 derniers mois</h2>
             <span className="text-xs text-gray-500">Barres</span>
           </div>
-          {/* Couleur via currentColor (hérite du texte) */}
           <div className="text-blue-600">
             <Bars data={buckets} />
           </div>
