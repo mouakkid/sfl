@@ -9,7 +9,7 @@ export async function middleware(req: NextRequest) {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        // ✅ nouvelle API côté Edge
+        // API moderne: getAll/setAll
         getAll() {
           return req.cookies.getAll()
         },
@@ -20,7 +20,7 @@ export async function middleware(req: NextRequest) {
     }
   )
 
-  // ✅ recommandé par Supabase pour revalider la session
+  // getUser() côté edge = revalidation fiable
   const { data, error } = await supabase.auth.getUser()
 
   if (error || !data?.user) {
@@ -32,7 +32,7 @@ export async function middleware(req: NextRequest) {
   return res
 }
 
-// ⚠️ ne matche que les pages privées (pas /login, pas /api, pas /)
+// Protège UNIQUEMENT les pages privées (pas /, pas /login, pas /api)
 export const config = {
   matcher: [
     '/dashboard/:path*',
