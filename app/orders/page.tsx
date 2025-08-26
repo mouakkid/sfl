@@ -1,7 +1,16 @@
-// app/orders/page.tsx
 import Link from 'next/link'
 import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
+import { deleteOrderAction } from './actions'
+
+type Search = {
+  q?: string
+  status?: string
+  from?: string
+  to?: string
+  min?: string
+  max?: string
+}
 
 type Order = {
   id: string
@@ -20,83 +29,45 @@ type Order = {
 const fmtMAD = (n: number) =>
   new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'MAD' }).format(n || 0)
 
-export default async function OrdersPage() {
+export default async function OrdersPage({ searchParams }: { searchParams: Search }) {
+  const { q = '', status = 'ALL', from = '', to = '', min = '', max = '' } = searchParams || {}
+
   const jar = cookies()
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return jar.getAll()
-        },
-        setAll(list) {
-          list.forEach((c) => jar.set(c))
-        },
-      },
-    }
+    { cookies: { getAll: () => jar.getAll(), setAll: (l) => l.forEach(c => jar.set(c)) } }
   )
 
-  const { data, error } = await supabase
-    .from('orders')
-    .select('*')
-    .order('created_at', { ascending: false })
-    .limit(500)
+  let query = supabase.from('orders').select('*', { count: 'exact' })
 
-  const rows = (Array.isArray(data) ? data : []) as unknown as Order[]
+  if (q) {
+    // recherche sur nom/phone/instagram
+    query = query.or(`customer_name.ilike.%${q}%,phone.ilike.%${q}%,instagram.ilike.%${q}%`)
+  }
+  if (status && status !== 'ALL') {
+    query = query.eq('status', status)
+  }
+  if (from) query = query.gte('created_at', from)
+  if (to)   query = query.lte('created_at', to)
+  if (min)  query = query.gte('sale_price', Number(min))
+  if (max)  query = query.lte('sale_price', Number(max))
+
+  const { data, error } = await query.order('created_at', { ascending: false }).limit(500)
+
+  const rows: Order[] = (Array.isArray(data) ? data : []) as unknown as Order[]
 
   return (
-    <div className="p-6 space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Orders</h1>
-        <Link href="/orders/new?back=/orders" className="border rounded px-3 py-1">
-          + Ajouter
+    <div className="p-6 space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <h1 className="text-2xl font-semibold flex items-center gap-2">
+          <BoxIcon /> Orders
+        </h1>
+        <Link href="/orders/new?back=/orders" className="inline-flex items-center gap-2 border rounded px-3 py-1">
+          <PlusIcon /> Ajouter
         </Link>
       </div>
 
-      {error && (
-        <p className="text-sm text-red-600">
-          Erreur Supabase : {String((error as any).message ?? error)}
-        </p>
-      )}
-
-      {!error && rows.length === 0 && (
-        <p className="text-sm text-muted-foreground">Aucune commande pour l’instant.</p>
-      )}
-
-      {!error && rows.length > 0 && (
-        <div className="overflow-x-auto rounded-2xl border">
-          <table className="w-full text-sm">
-            <thead className="border-b bg-muted/40">
-              <tr>
-                <th className="text-left py-2 px-3">Date</th>
-                <th className="text-left py-2 px-3">Client</th>
-                <th className="text-left py-2 px-3">Téléphone</th>
-                <th className="text-left py-2 px-3">Instagram</th>
-                <th className="text-left py-2 px-3">Montant</th>
-                <th className="text-left py-2 px-3">Statut</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((o) => {
-                const amount = (o.sale_price ?? o.amount ?? 0) as number
-                return (
-                  <tr key={o.id} className="border-b hover:bg-muted/30">
-                    <td className="py-2 px-3">
-                      {o.created_at ? new Date(o.created_at).toLocaleString('fr-FR') : '-'}
-                    </td>
-                    <td className="py-2 px-3">{o.customer_name ?? '-'}</td>
-                    <td className="py-2 px-3">{o.phone ?? '-'}</td>
-                    <td className="py-2 px-3">{o.instagram ?? '-'}</td>
-                    <td className="py-2 px-3">{fmtMAD(Number(amount) || 0)}</td>
-                    <td className="py-2 px-3">{o.status ?? '-'}</td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
-  )
-}
+      {/* Filtres */}
+      <div className="rounded-2xl border p
