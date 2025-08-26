@@ -11,17 +11,13 @@ function getServerSupabase() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        getAll() {
-          return store.getAll()
-        },
-        setAll(cookiesToSet) {
+        getAll() { return store.getAll() },
+        setAll(list) {
           try {
-            cookiesToSet.forEach(({ name, value, options }) =>
+            list.forEach(({ name, value, options }) =>
               store.set(name, value, options as CookieOptions)
             )
-          } catch {
-            // ignore set cookie errors on edge runtimes
-          }
+          } catch {}
         },
       },
     }
@@ -44,6 +40,5 @@ export async function login(formData: FormData) {
     redirect(`/login?error=${encodeURIComponent(error.message)}&redirect=${encodeURIComponent(redirectTo)}`)
   }
 
-  // ✅ Cookies sb-access-token/sb-refresh-token sont posés ici par Supabase SSR
   redirect(redirectTo)
 }
